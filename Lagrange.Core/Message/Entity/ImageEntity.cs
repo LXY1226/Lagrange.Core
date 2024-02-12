@@ -15,25 +15,28 @@ namespace Lagrange.Core.Message.Entity;
 public class ImageEntity : IMessageEntity
 {
     private const string BaseUrl = "https://multimedia.nt.qq.com.cn";
-    
+
     private const string LegacyBaseUrl = "http://gchat.qpic.cn";
-    
+
     public Vector2 PictureSize { get; set; }
-    
+
     public string FilePath { get; set; } = string.Empty;
-    
+
     public uint ImageSize { get; set; }
-    
+
+    public string FileMd5 { get; set; }
+    public string FileSha1 { get; set; }
+
     public string ImageUrl { get; set; } = string.Empty;
-    
+
     internal Stream? ImageStream { get; set; }
 
     internal string? Path { get; set; }
-    
+
     internal uint FileId { get; set; }
-    
+
     public ImageEntity() { }
-    
+
     public ImageEntity(string filePath)
     {
         FilePath = filePath;
@@ -45,7 +48,7 @@ public class ImageEntity : IMessageEntity
         FilePath = "";
         ImageStream = new MemoryStream(file);
     }
-    
+
     IEnumerable<Elem> IMessageEntity.PackElement()
     {
         if (ImageStream is null) throw new NullReferenceException(nameof(ImageStream));
@@ -53,7 +56,7 @@ public class ImageEntity : IMessageEntity
         var buffer = new byte[1024]; // parse image header
         int _ = ImageStream.Read(buffer.AsSpan());
         var type = ImageResolver.Resolve(buffer, out var size);
-        
+
         string imageExt = type switch
         {
             ImageFormat.Jpeg => ".jpg",
@@ -71,7 +74,7 @@ public class ImageEntity : IMessageEntity
 
         ImageStream?.Close();
         ImageStream?.Dispose();
-        
+
         var targetElem = Path != null ? new Elem
         {
             NotOnlineImage = new NotOnlineImage
@@ -108,16 +111,16 @@ public class ImageEntity : IMessageEntity
                 PbReserve = new CustomFaceExtra { Field1 = 0 }
             }
         };
-        
+
         return new[] { targetElem };
     }
-    
+
     IMessageEntity? IMessageEntity.UnpackElement(Elem elems)
     {
         if (elems.NotOnlineImage is { } image)
         {
             string baseUrl = image.OrigUrl.Contains("&rkey=") ? BaseUrl : LegacyBaseUrl;
-            
+
             return new ImageEntity
             {
                 PictureSize = new Vector2(image.PicWidth, image.PicHeight),
@@ -126,11 +129,11 @@ public class ImageEntity : IMessageEntity
                 ImageUrl = $"{baseUrl}{image.OrigUrl}"
             };
         }
-        
+
         if (elems.CustomFace is { } face)
         {
             if (face.OrigUrl.Contains("&rkey=")) return null; // NTQQ's shit
-            
+
             return new ImageEntity
             {
                 PictureSize = new Vector2(face.Width, face.Height),
@@ -147,17 +150,19 @@ public class ImageEntity : IMessageEntity
             if (extra.Metadata.Urls != null)
             {
                 string url = $"https://{extra.Metadata.Urls.Domain}{extra.Metadata.Urls.Suffix}{extra.Credential.Resp.GroupKey?.RKey ?? extra.Credential.Resp.FriendKey?.RKey}";
-                
+
                 return new ImageEntity
                 {
                     PictureSize = new Vector2(extra.Metadata.File.FileInfo.PicWidth, extra.Metadata.File.FileInfo.PicHeight),
                     FilePath = extra.Metadata.File.FileInfo.FilePath,
                     ImageSize = (uint)extra.Metadata.File.FileInfo.FileSize,
-                    ImageUrl = url
+                    ImageUrl = url,
+                    FileMd5 = extra.Metadata.File.FileInfo.FileMd5,
+                    FileSha1 = extra.Metadata.File.FileInfo.FileSha1,
                 };
             }
         }
-        
+
         return null;
     }
 
